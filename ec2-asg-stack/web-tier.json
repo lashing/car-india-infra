@@ -1,0 +1,308 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "LatestAmiId": {
+            "Description": "Region specific image from the Parameter Store",
+            "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+        },
+        "InstanceType": {
+            "Description": "Amazon EC2 instance type for the instances",
+            "Type": "String",
+            "AllowedValues": [
+                "t2.micro",
+                "t3.micro",
+                "t3.small",
+                "t3.medium"
+            ],
+            "Default": "t2.micro"
+        },
+        "VPCId": {
+            "Type" : "String",
+            "Description" : "VPC of this Infrastructure",
+            "Default": "vpc-0de06b93d7df026c8"
+        },
+        "WebasgSubnets": {
+            "Type": "CommaDelimitedList",
+            "Description": "A list of subnets for the Auto Scaling group",
+            "Default": "subnet-01da67a378e322e9d, subnet-0168511540539880e"
+        },
+        "WebalbSubnets": {
+            "Type": "CommaDelimitedList",
+            "Description": "A list of subnets for the Auto Scaling group",
+            "Default": "subnet-0667f6e220b3edc45, subnet-09c0e64fdfe4023a9"
+        },
+        "Commonkeypair": {
+            "Type": "String",
+            "Default": "car-india-app"          
+        }
+    },
+    "Resources": {
+        "WebartifcatBucket": {
+            "Type": "AWS::S3::Bucket",
+            "DeletionPolicy": "Delete",
+            "Properties": {
+                "BucketName": "car-india-web-artifatcs"
+            }
+        },
+        "CodedeployRole": {
+            "Type" : "AWS::IAM::Role",
+            "Properties" : {
+                "AssumeRolePolicyDocument" : { 
+                    "Version": "2012-10-17", 
+                    "Statement": [ 
+                      { 
+                        "Sid": "", 
+                        "Effect": "Allow", 
+                        "Principal": { 
+                          "Service": [ 
+                            "codedeploy.amazonaws.com" 
+                          ] 
+                        }, 
+                        "Action": "sts:AssumeRole" 
+                      } 
+                    ] 
+                },
+                "Description" : "Code deploy role for deploying to autoscaling groups",
+                "ManagedPolicyArns" : [ "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole" ],
+                "RoleName" : "car-india-code-deploy-role"
+              }
+          },
+        "WebInstanceprofileRole": {
+            "Type" : "AWS::IAM::Role",
+            "Properties" : {
+                "AssumeRolePolicyDocument" : { 
+                    "Version": "2012-10-17", 
+                    "Statement": [ 
+                      { 
+                        "Sid": "", 
+                        "Effect": "Allow", 
+                        "Principal": { 
+                          "Service": [ 
+                            "ec2.amazonaws.com" 
+                          ] 
+                        }, 
+                        "Action": "sts:AssumeRole" 
+                      } 
+                    ] 
+                },
+                "Description" : "Code deploy role for deploying to autoscaling groups",
+                "ManagedPolicyArns" : [ "arn:aws:iam::aws:policy/AmazonS3FullAccess" ],
+                "RoleName" : "web-instance-role"
+              }
+          },
+         "WebInstanceprofile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles": [ {
+                    "Ref": "WebInstanceprofileRole"
+                  } ]
+                }
+        },
+         "SGalbWeb" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "SG for web asg",
+                "GroupName": "SGalbWeb",
+                "VpcId" : {"Ref" : "VPCId"},
+                "SecurityGroupIngress" : [ 
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 443, 
+                    "ToPort" : 443, 
+                    "CidrIp" : "10.0.0.0/16" 
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 80, 
+                    "ToPort" : 80, 
+                    "CidrIp" : "10.0.0.0/16"
+                }]
+            }
+        },
+        "SGWebasg" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "DependsOn": "SGalbWeb",
+            "Properties" : {
+                "GroupDescription" : "SG for web asg",
+                "GroupName": "SGWebasg",
+                "VpcId" : {"Ref" : "VPCId"},
+                "SecurityGroupIngress" : [ 
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 22, 
+                    "ToPort" : 22, 
+                    "CidrIp" : "136.226.244.248/32" 
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 80, 
+                    "ToPort" : 80, 
+                    "CidrIp" : "136.226.244.248/32"
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 80, 
+                    "ToPort" : 80, 
+                    "SourceSecurityGroupId" : { "Ref": "SGalbWeb" }
+                }]
+            }
+        },
+        "ALBwebtg": {
+            "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties" : {
+                "HealthCheckEnabled" : true,
+                "HealthCheckIntervalSeconds" : 30,
+                "HealthCheckPath" : "/",
+                "HealthCheckPort" : "traffic-port",
+                "HealthCheckProtocol" : "HTTP",
+                "HealthCheckTimeoutSeconds" : 5,
+                "HealthyThresholdCount" : 5,
+                "IpAddressType" : "ipv4",
+                "Name" : "car-india-web-alb-tg",
+                "Port" : 80,
+                "Protocol" : "HTTP",
+                "ProtocolVersion" : "HTTP1",
+                "Tags" : [ {
+                    "Key" : "Name",
+                    "Value" : "car-india-web-tg"
+                  }],
+                "TargetType" : "instance",
+                "UnhealthyThresholdCount" : 2,
+                "VpcId" : {"Ref" : "VPCId"}
+              }
+          },                       
+        "ALBweb": {
+            "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "DependsOn": "ALBwebtg",
+            "Properties" : {
+                "IpAddressType" : "ipv4",
+                "Name" : "car-india-web-alb",
+                "Scheme" : "internet-facing",
+                "SecurityGroups" : [ { "Ref": "SGalbWeb" } ],
+                "Subnets" : { "Ref": "WebalbSubnets" },
+                "Tags" : [ {
+                    "Key" : "Name",
+                    "Value" : "car-india-web-alb"
+                  }],
+                "Type" : "application"
+            }
+        },
+        "ALBWebhttplistener":{
+            "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+            "DependsOn": "ALBweb",
+            "Properties" : {
+                "DefaultActions" : [ {
+                    "Order" : 1,
+                    "TargetGroupArn" : { "Ref": "ALBwebtg"},
+                    "Type": "forward"
+                } ],
+                "LoadBalancerArn" : { "Ref": "ALBweb" },
+                "Port" : 80,
+                "Protocol" : "HTTP"
+              }
+        },
+        "webLaunchTemplate": {
+            "Type": "AWS::EC2::LaunchTemplate",
+            "DependsOn": ["SGWebasg","WebartifcatBucket"],
+            "Properties": {
+                "LaunchTemplateName": { "Fn::Sub": "${AWS::StackName}-launch-template" },
+                "LaunchTemplateData": {
+                    "ImageId": { "Ref": "LatestAmiId" },
+                    "InstanceType": { "Ref": "InstanceType" },
+                    "KeyName" : { "Ref": "Commonkeypair" },
+                    "UserData": { "Fn::Base64": { "Fn::Join": ["\n", [
+                        "#!/bin/bash",
+                        "sudo yum update -y",
+                        "sudo yum install -y ruby",
+                        "sudo yum install -y wget",
+                        "wget https://aws-codedeploy-us-west-2.s3.us-west-2.amazonaws.com/latest/install",
+                        "chmod +x ./install",
+                        "sudo ./install auto",
+                        "sudo service codedeploy-agent start",
+                        "yum update -y aws-cfn-bootstrap",
+                        "sudo amazon-linux-extras install nginx1 -y",
+                        "sudo systemctl enable nginx",
+                        "sudo systemctl start nginx",
+                        "sudo yum install -y git",
+                        "git clone https://github.com/lashing/car-india-web.git car-india-web",
+                        "cd car-india-web",
+                        "zip -r ../car-india-web.zip *",
+                        "cd ../",
+                        "aws s3 cp car-india-web.zip s3://car-india-web-artifatcs/artifacts/",
+                        { "Fn::Sub": "/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource webASG --region ${AWS::Region}" }]]
+                    }} ,  
+                    "IamInstanceProfile": {
+
+                        "Name" :  { "Ref": "WebInstanceprofile" }
+                    },
+                    "NetworkInterfaces": [
+                        {                          
+                            "AssociatePublicIpAddress" : true,
+                            "DeviceIndex" : 0,
+                            "Groups" : [ { "Ref": "SGWebasg" } ]
+                        }
+                    ]
+                }
+            }
+        },
+        "webASG": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "DependsOn": "ALBwebtg",
+            "CreationPolicy": {
+                "ResourceSignal": {
+                  "Count": "1",
+                  "Timeout": "PT5M"
+                }
+            },
+            "Properties": {
+                "AutoScalingGroupName" : "car-india-web-asg",
+                "LaunchTemplate": {
+                    "LaunchTemplateId": { "Ref": "webLaunchTemplate" },
+                    "Version": { "Fn::GetAtt": [ "webLaunchTemplate", "LatestVersionNumber" ] }
+                },
+                "MaxSize": "1",
+                "MinSize": "0",
+                "DesiredCapacity": "1",
+                "VPCZoneIdentifier": { "Ref": "WebasgSubnets" },
+                "TargetGroupARNs": [{ "Ref": "ALBwebtg" }],
+                "Tags": [{
+                    "Key" : "Name",
+                    "PropagateAtLaunch" : true,
+                    "Value" : "web-nginx-instance"
+                  }  
+                ]               
+            }
+        },
+        "Webdeployapp":{
+            "Type" : "AWS::CodeDeploy::Application",
+            "Properties" : {
+                "ApplicationName" : "car-india-web-deploy-app",
+                "ComputePlatform" : "Server"
+              }
+        },
+        "Webdeploygroup":{
+            "Type" : "AWS::CodeDeploy::DeploymentGroup",
+            "DependsOn": ["webASG","WebartifcatBucket","CodedeployRole"],
+            "Properties" : {
+                "ApplicationName" : { "Ref": "Webdeployapp" },
+                "AutoScalingGroups" : [ { "Ref": "webASG" } ],
+                "Deployment" : { 
+                    "Description" : "car-india-web deplyment", 
+                    "IgnoreApplicationStopFailures" : "true", 
+                    "Revision" : { 
+                        "RevisionType" : "S3", 
+                        "S3Location" : {
+                            "Bucket" : { "Ref": "WebartifcatBucket" },
+                            "BundleType" : "Zip",
+                            "Key" : "artifacts/car-india-web.zip"
+                          }                          
+                    } 
+                }, 
+                "DeploymentGroupName" : "car-india-web-deploy-group",
+                "ServiceRoleArn": {"Fn::GetAtt" : ["CodedeployRole", "Arn"] }
+            }
+          }          
+    }
+}

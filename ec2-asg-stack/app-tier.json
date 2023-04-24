@@ -1,0 +1,315 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "LatestAmiId": {
+            "Description": "Region specific image from the Parameter Store",
+            "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+        },
+        "InstanceType": {
+            "Description": "Amazon EC2 instance type for the instances",
+            "Type": "String",
+            "AllowedValues": [
+                "t2.micro",
+                "t3.micro",
+                "t3.small",
+                "t3.medium"
+            ],
+            "Default": "t2.micro"
+        },
+        "VPCId": {
+            "Type" : "String",
+            "Description" : "VPC of this Infrastructure",
+            "Default": "vpc-0de06b93d7df026c8"
+        },
+        "AppasgSubnets": {
+            "Type": "CommaDelimitedList",
+            "Description": "A list of subnets for the Auto Scaling group",
+            "Default": "subnet-00022b43ddeebc5cf, subnet-0f5e98879d6af3e18"
+        },
+        "AppalbSubnets": {
+            "Type": "CommaDelimitedList",
+            "Description": "A list of subnets for the Auto Scaling group",
+            "Default": "subnet-00022b43ddeebc5cf, subnet-0f5e98879d6af3e18"
+        },
+        "Commonkeypair": {
+            "Type": "String",
+            "Default": "car-india-app"          
+        }
+    },
+    "Resources": {
+        "AppartifcatBucket": {
+            "Type": "AWS::S3::Bucket",
+            "DeletionPolicy": "Delete",
+            "Properties": {
+                "BucketName": "car-india-app-artifatcs"
+            }
+        },
+        "CodedeployRoleforapp": {
+            "Type" : "AWS::IAM::Role",
+            "Properties" : {
+                "AssumeRolePolicyDocument" : { 
+                    "Version": "2012-10-17", 
+                    "Statement": [ 
+                      { 
+                        "Sid": "", 
+                        "Effect": "Allow", 
+                        "Principal": { 
+                          "Service": [ 
+                            "codedeploy.amazonaws.com" 
+                          ] 
+                        }, 
+                        "Action": "sts:AssumeRole" 
+                      } 
+                    ] 
+                },
+                "Description" : "Code deploy role for deploying to autoscaling groups",
+                "ManagedPolicyArns" : [ "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole" ],
+                "RoleName" : "car-india-app-code-deploy-role"
+              }
+          },
+        "appInstanceprofileRole": {
+            "Type" : "AWS::IAM::Role",
+            "Properties" : {
+                "AssumeRolePolicyDocument" : { 
+                    "Version": "2012-10-17", 
+                    "Statement": [ 
+                      { 
+                        "Sid": "", 
+                        "Effect": "Allow", 
+                        "Principal": { 
+                          "Service": [ 
+                            "ec2.amazonaws.com" 
+                          ] 
+                        }, 
+                        "Action": "sts:AssumeRole" 
+                      } 
+                    ] 
+                },
+                "Description" : "Code deploy role for deploying to autoscaling groups",
+                "ManagedPolicyArns" : [ "arn:aws:iam::aws:policy/AmazonS3FullAccess" ],
+                "RoleName" : "app-instance-role"
+              }
+          },
+         "appInstanceprofile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles": [ {
+                    "Ref": "appInstanceprofileRole"
+                  } ]
+                }
+        },
+         "SGalbApp" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "SG for app asg",
+                "GroupName": "SGalbApp",
+                "VpcId" : {"Ref" : "VPCId"},
+                "SecurityGroupIngress" : [ 
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 80, 
+                    "ToPort" : 80, 
+                    "CidrIp" : "136.226.243.18/32"
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 443, 
+                    "ToPort" : 443, 
+                    "CidrIp" : "10.0.0.0/16" 
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 80, 
+                    "ToPort" : 80, 
+                    "CidrIp" : "10.0.0.0/16"
+                }]
+            }
+        },
+        "SGAppasg" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "DependsOn": "SGalbApp",
+            "Properties" : {
+                "GroupDescription" : "SG for app asg",
+                "GroupName": "SGAppasg",
+                "VpcId" : {"Ref" : "VPCId"},
+                "SecurityGroupIngress" : [ 
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 22, 
+                    "ToPort" : 22, 
+                    "CidrIp" : "136.226.243.18/32" 
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 3000, 
+                    "ToPort" : 3000, 
+                    "CidrIp" : "136.226.243.18/32"
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 3000, 
+                    "ToPort" : 3000, 
+                    "SourceSecurityGroupId" : { "Ref": "SGalbApp" }
+                }]
+            }
+        },
+        "ALBapptg": {
+            "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties" : {
+                "HealthCheckEnabled" : true,
+                "HealthCheckIntervalSeconds" : 30,
+                "HealthCheckPath" : "/",
+                "HealthCheckPort" : "traffic-port",
+                "HealthCheckProtocol" : "HTTP",
+                "HealthCheckTimeoutSeconds" : 5,
+                "HealthyThresholdCount" : 5,
+                "IpAddressType" : "ipv4",
+                "Name" : "car-india-app-alb-tg",
+                "Port" : 3000,
+                "Protocol" : "HTTP",
+                "ProtocolVersion" : "HTTP1",
+                "Tags" : [ {
+                    "Key" : "Name",
+                    "Value" : "car-india-app-tg"
+                  }],
+                "TargetType" : "instance",
+                "UnhealthyThresholdCount" : 2,
+                "VpcId" : {"Ref" : "VPCId"}
+              }
+          },                       
+        "ALBapp": {
+            "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "DependsOn": "ALBapptg",
+            "Properties" : {
+                "IpAddressType" : "ipv4",
+                "Name" : "car-india-app-alb",
+                "Scheme" : "internet-facing",
+                "SecurityGroups" : [ { "Ref": "SGalbApp" } ],
+                "Subnets" : { "Ref": "AppalbSubnets" },
+                "Tags" : [ {
+                    "Key" : "Name",
+                    "Value" : "car-india-app-alb"
+                  }],
+                "Type" : "application"
+            }
+        },
+        "ALBApphttplistener":{
+            "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+            "DependsOn": "ALBapp",
+            "Properties" : {
+                "DefaultActions" : [ {
+                    "Order" : 1,
+                    "TargetGroupArn" : { "Ref": "ALBapptg"},
+                    "Type": "forward"
+                } ],
+                "LoadBalancerArn" : { "Ref": "ALBapp" },
+                "Port" : 80,
+                "Protocol" : "HTTP"
+              }
+        },
+        "appLaunchTemplate": {
+            "Type": "AWS::EC2::LaunchTemplate",
+            "DependsOn": ["SGAppasg","AppartifcatBucket"],
+            "Properties": {
+                "LaunchTemplateName": { "Fn::Sub": "${AWS::StackName}-launch-template" },
+                "LaunchTemplateData": {
+                    "ImageId": { "Ref": "LatestAmiId" },
+                    "InstanceType": { "Ref": "InstanceType" },
+                    "KeyName" : { "Ref": "Commonkeypair" },
+                    "UserData": { "Fn::Base64": { "Fn::Join": ["\n", [
+                        "#!/bin/bash",
+                        "sudo yum update -y",
+                        "sudo yum install -y ruby",
+                        "sudo yum install -y wget",
+                        "wget https://aws-codedeploy-us-west-2.s3.us-west-2.amazonaws.com/latest/install",
+                        "chmod +x ./install",
+                        "sudo ./install auto",
+                        "sudo service codedeploy-agent start",
+                        "yum update -y aws-cfn-bootstrap",
+                        "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash",
+                        ". ~/.nvm/nvm.sh",
+                        "nvm install 16",
+                        "sudo yum install -y git",
+                        "git clone https://github.com/lashing/car-india-app.git car-india-app",
+                        "cd car-india-app",
+                        "npm install",
+                        "zip -r ../car-india-app.zip *",
+                        "cd ../",
+                        "aws s3 cp car-india-app.zip s3://car-india-app-artifatcs/artifacts/",
+                        { "Fn::Sub": "/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource appASG --region ${AWS::Region}" }]]
+                    }} ,  
+                    "IamInstanceProfile": {
+
+                        "Name" :  { "Ref": "appInstanceprofile" }
+                    },
+                    "NetworkInterfaces": [
+                        {                          
+                            "AssociatePublicIpAddress" : true,
+                            "DeviceIndex" : 0,
+                            "Groups" : [ { "Ref": "SGAppasg" } ]
+                        }
+                    ]
+                }
+            }
+        },
+        "appASG": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "DependsOn": "ALBapptg",
+            "CreationPolicy": {
+                "ResourceSignal": {
+                  "Count": "1",
+                  "Timeout": "PT5M"
+                }
+            },
+            "Properties": {
+                "AutoScalingGroupName" : "car-india-app-asg",
+                "LaunchTemplate": {
+                    "LaunchTemplateId": { "Ref": "appLaunchTemplate" },
+                    "Version": { "Fn::GetAtt": [ "appLaunchTemplate", "LatestVersionNumber" ] }
+                },
+                "MaxSize": "1",
+                "MinSize": "0",
+                "DesiredCapacity": "1",
+                "VPCZoneIdentifier": { "Ref": "AppasgSubnets" },
+                "TargetGroupARNs": [{ "Ref": "ALBapptg" }],
+                "Tags": [{
+                    "Key" : "Name",
+                    "PropagateAtLaunch" : true,
+                    "Value" : "app-node-instance"
+                  }  
+                ]               
+            }
+        },
+        "Appdeployapp":{
+            "Type" : "AWS::CodeDeploy::Application",
+            "Properties" : {
+                "ApplicationName" : "car-india-app-deploy-app",
+                "ComputePlatform" : "Server"
+              }
+        },
+        "Appdeploygroup":{
+            "Type" : "AWS::CodeDeploy::DeploymentGroup",
+            "DependsOn": ["appASG","AppartifcatBucket","CodedeployRoleforapp"],
+            "Properties" : {
+                "ApplicationName" : { "Ref": "Appdeployapp" },
+                "AutoScalingGroups" : [ { "Ref": "appASG" } ],
+                "Deployment" : { 
+                    "Description" : "car-india-app deplyment", 
+                    "IgnoreApplicationStopFailures" : "true", 
+                    "Revision" : { 
+                        "RevisionType" : "S3", 
+                        "S3Location" : {
+                            "Bucket" : { "Ref": "AppartifcatBucket" },
+                            "BundleType" : "Zip",
+                            "Key" : "artifacts/car-india-app.zip"
+                          }                          
+                    } 
+                }, 
+                "DeploymentGroupName" : "car-india-app-deploy-group",
+                "ServiceRoleArn": {"Fn::GetAtt" : ["CodedeployRoleforapp", "Arn"] }
+            }
+          }          
+    }
+}

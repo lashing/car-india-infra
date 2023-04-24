@@ -1,0 +1,121 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "VPCId": {
+            "Type" : "String",
+            "Description" : "VPC of this Infrastructure",
+            "Default": "vpc-0de06b93d7df026c8"
+        },
+        "AllocatedStorage": {
+            "Type": "String",
+            "Default": 20
+        },
+        "PublicAccess" : {
+            "Type": "String",
+            "AllowedValues": [
+                "true",
+                "false"
+            ],
+            "Default": "true"     
+        },
+        "DBInstanceIdentifier": {
+            "Type": "String",
+            "Default": "car-india-app-db"
+        },
+        "DBInstanceClass": {
+            "Type": "String",
+            "Default": "db.t2.micro"
+        },
+        "DBName": {
+            "Type": "String",
+            "Default": "cardb"
+        },
+        "DBsubnetlist": {
+            "Type": "CommaDelimitedList",
+            "Description": "A list of subnets for creating DB subnet group",
+            "Default": "subnet-00022b43ddeebc5cf, subnet-0f5e98879d6af3e18"
+        },
+        "Engine": {
+            "Type": "String",
+            "Default": "mysql"
+        },
+        "EngineVersion": {
+            "Type": "String",
+            "Default": "8.0"
+        },
+        "LicenseModel": {
+            "Type": "String",
+            "Default": "general-public-license"
+        },
+        "MasterUsername": {
+            "Type": "String",
+            "Default": "root"
+        },
+        "MasterUserPassword": {
+            "Type": "String",
+            "NoEcho": true
+        }
+    },
+    "Resources": {
+        "DBSubntgrp": {
+            "Type" : "AWS::RDS::DBSubnetGroup",
+            "Properties" : {
+                "DBSubnetGroupDescription" : "Car india db subnet group",
+                "DBSubnetGroupName" : "carindiadbsubnetgrp",
+                "SubnetIds" : {"Ref" : "DBsubnetlist"}
+            }
+        },
+        "SGdbrds" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "SG for RDS",
+                "GroupName": "SGforRDS",
+                "VpcId" : {"Ref" : "VPCId"},
+                "SecurityGroupIngress" : [ 
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 3306, 
+                    "ToPort" : 3306, 
+                    "CidrIp" : "136.226.243.18/32" 
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 3306, 
+                    "ToPort" : 3306, 
+                    "CidrIp" : "10.0.0.0/16"
+                }]
+            }
+        },          
+        "RDSDBInstance": {
+            "DependsOn": ["DBSubntgrp", "SGdbrds"],
+            "Properties": {
+                "AllocatedStorage": {
+                    "Ref": "AllocatedStorage"
+                },
+                "AutoMinorVersionUpgrade": false,
+                "DBInstanceClass": {
+                    "Ref": "DBInstanceClass"
+                },
+                "DBSubnetGroupName": "carindiadbsubnetgrp",
+                "VPCSecurityGroups":[{ "Ref": "SGdbrds" }],
+                "Engine": {
+                    "Ref": "Engine"
+                },
+                "EngineVersion": {
+                    "Ref": "EngineVersion"
+                },
+                "LicenseModel": {
+                    "Ref": "LicenseModel"
+                },
+                "MasterUsername": {
+                    "Ref": "MasterUsername"
+                },
+                "MasterUserPassword": {
+                    "Ref": "MasterUserPassword"
+                },
+                "PubliclyAccessible": { "Ref": "PublicAccess" }
+            },
+            "Type": "AWS::RDS::DBInstance"
+        }
+    }
+}

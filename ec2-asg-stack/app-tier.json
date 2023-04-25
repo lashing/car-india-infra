@@ -111,7 +111,7 @@
                     "IpProtocol" : "tcp", 
                     "FromPort" : 80, 
                     "ToPort" : 80, 
-                    "CidrIp" : "136.226.243.18/32"
+                    "CidrIp" : "0.0.0.0/0"
                 },
                 { 
                     "IpProtocol" : "tcp", 
@@ -228,13 +228,13 @@
                         "sudo ./install auto",
                         "sudo service codedeploy-agent start",
                         "yum update -y aws-cfn-bootstrap",
-                        "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash",
-                        ". ~/.nvm/nvm.sh",
-                        "nvm install 16",
+                        "curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash - ",
+                        "sudo yum install -y nodejs",
                         "sudo yum install -y git",
                         "git clone https://github.com/lashing/car-india-app.git car-india-app",
-                        "cd car-india-app",
+                        "cd car-india-app/backend-code/",
                         "npm install",
+                        "cd ../",
                         "zip -r ../car-india-app.zip *",
                         "cd ../",
                         "aws s3 cp car-india-app.zip s3://car-india-app-artifatcs/artifacts/",

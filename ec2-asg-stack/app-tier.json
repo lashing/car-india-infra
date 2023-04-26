@@ -223,10 +223,6 @@
                         "sudo yum update -y",
                         "sudo yum install -y ruby",
                         "sudo yum install -y wget",
-                        "wget https://aws-codedeploy-us-west-2.s3.us-west-2.amazonaws.com/latest/install",
-                        "chmod +x ./install",
-                        "sudo ./install auto",
-                        "sudo service codedeploy-agent start",
                         "yum update -y aws-cfn-bootstrap",
                         "curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash - ",
                         "sudo yum install -y nodejs",
@@ -238,6 +234,10 @@
                         "zip -r ../car-india-app.zip *",
                         "cd ../",
                         "aws s3 cp car-india-app.zip s3://car-india-app-artifatcs/artifacts/",
+                        "wget https://aws-codedeploy-us-west-2.s3.us-west-2.amazonaws.com/latest/install",
+                        "chmod +x ./install",
+                        "sudo ./install auto",
+                        "sudo service codedeploy-agent start",
                         { "Fn::Sub": "/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource appASG --region ${AWS::Region}" }]]
                     }} ,  
                     "IamInstanceProfile": {

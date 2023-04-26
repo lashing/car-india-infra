@@ -217,10 +217,6 @@
                         "sudo yum update -y",
                         "sudo yum install -y ruby",
                         "sudo yum install -y wget",
-                        "wget https://aws-codedeploy-us-west-2.s3.us-west-2.amazonaws.com/latest/install",
-                        "chmod +x ./install",
-                        "sudo ./install auto",
-                        "sudo service codedeploy-agent start",
                         "yum update -y aws-cfn-bootstrap",
                         "sudo amazon-linux-extras install nginx1 -y",
                         "sudo systemctl enable nginx",
@@ -231,6 +227,10 @@
                         "zip -r ../car-india-web.zip *",
                         "cd ../",
                         "aws s3 cp car-india-web.zip s3://car-india-web-artifatcs/artifacts/",
+                        "wget https://aws-codedeploy-us-west-2.s3.us-west-2.amazonaws.com/latest/install",
+                        "chmod +x ./install",
+                        "sudo ./install auto",
+                        "sudo service codedeploy-agent start",
                         { "Fn::Sub": "/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource webASG --region ${AWS::Region}" }]]
                     }} ,  
                     "IamInstanceProfile": {

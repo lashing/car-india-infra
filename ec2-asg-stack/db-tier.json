@@ -93,7 +93,6 @@
                     "Ref": "AllocatedStorage"
                 },
                 "AutoMinorVersionUpgrade": false,
-                "DeletionPolicy": "Delete",
                 "DBInstanceClass": {
                     "Ref": "DBInstanceClass"
                 },

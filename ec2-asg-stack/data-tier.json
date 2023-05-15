@@ -1,0 +1,190 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "VPCId": {
+            "Type" : "String",
+            "Description" : "VPC of this Infrastructure",
+            "Default": "vpc-0de06b93d7df026c8"
+        },
+        "AllocatedStorage": {
+            "Type": "String",
+            "Default": 20
+        },
+        "PublicAccess" : {
+            "Type": "String",
+            "AllowedValues": [
+                "true",
+                "false"
+            ],
+            "Default": "true"     
+        },
+        "DBInstanceIdentifier": {
+            "Type": "String",
+            "Default": "car-india-app-db"
+        },
+        "DBInstanceClass": {
+            "Type": "String",
+            "Default": "db.t2.micro"
+        },
+        "DBName": {
+            "Type": "String",
+            "Default": "cardb"
+        },
+        "DBsubnetlist": {
+            "Type": "CommaDelimitedList",
+            "Description": "A list of subnets for creating DB subnet group",
+            "Default": "subnet-00022b43ddeebc5cf, subnet-0f5e98879d6af3e18"
+        },
+        "Engine": {
+            "Type": "String",
+            "Default": "mysql"
+        },
+        "EngineVersion": {
+            "Type": "String",
+            "Default": "8.0"
+        },
+        "LicenseModel": {
+            "Type": "String",
+            "Default": "general-public-license"
+        },
+        "MasterUsername": {
+            "Type": "String",
+            "Default": "root"
+        },
+        "DBAppUsername": {
+            "Type": "String",
+            "Default": "carappuser"
+        },
+        "DBname": {
+            "Type": "String",
+            "Default": "cardb"
+        },
+        "MasterUserPassword": {
+            "Type": "String",
+            "NoEcho": true
+        },
+        "DBAppUserPassword": {
+            "Type": "String",
+            "NoEcho": true
+        }
+    },
+    "Resources": {
+        "DBSubntgrp": {
+            "Type" : "AWS::RDS::DBSubnetGroup",
+            "Properties" : {
+                "DBSubnetGroupDescription" : "Car india db subnet group",
+                "DBSubnetGroupName" : "carindiadbsubnetgrp",
+                "SubnetIds" : {"Ref" : "DBsubnetlist"}
+            }
+        },
+        "SGdbrds" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "SG for RDS",
+                "GroupName": "SGforRDS",
+                "VpcId" : {"Ref" : "VPCId"},
+                "SecurityGroupIngress" : [ 
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 3306, 
+                    "ToPort" : 3306, 
+                    "CidrIp" : "136.226.243.18/32" 
+                },
+                { 
+                    "IpProtocol" : "tcp", 
+                    "FromPort" : 3306, 
+                    "ToPort" : 3306, 
+                    "CidrIp" : "10.0.0.0/16"
+                }]
+            }
+        },          
+        "RDSDBInstance": {
+            "DependsOn": ["DBSubntgrp", "SGdbrds"],
+            "Properties": {
+                "AllocatedStorage": {
+                    "Ref": "AllocatedStorage"
+                },
+                "AutoMinorVersionUpgrade": false,
+                "DBInstanceClass": {
+                    "Ref": "DBInstanceClass"
+                },
+                "DBSubnetGroupName": "carindiadbsubnetgrp",
+                "VPCSecurityGroups":[{ "Ref": "SGdbrds" }],
+                "Engine": {
+                    "Ref": "Engine"
+                },
+                "EngineVersion": {
+                    "Ref": "EngineVersion"
+                },
+                "LicenseModel": {
+                    "Ref": "LicenseModel"
+                },
+                "MasterUsername": {
+                    "Ref": "MasterUsername"
+                },
+                "MasterUserPassword": {
+                    "Ref": "MasterUserPassword"
+                },
+                "PubliclyAccessible": { "Ref": "PublicAccess" }
+            },
+            "Type": "AWS::RDS::DBInstance"
+        },
+        "LambdaRole": {
+            "Type" : "AWS::IAM::Role",
+            "DependsOn": ["RDSDBInstance"],
+            "Properties" : {
+                "AssumeRolePolicyDocument" : { 
+                    "Version": "2012-10-17", 
+                    "Statement": [ 
+                      { 
+                        "Sid": "", 
+                        "Effect": "Allow", 
+                        "Principal": { 
+                          "Service": [ 
+                            "lambda.amazonaws.com" 
+                          ] 
+                        }, 
+                        "Action": "sts:AssumeRole" 
+                      } 
+                    ] 
+                },
+                "Description" : "Lambda Execution Role from VPC",
+                "ManagedPolicyArns" : [ "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole" ],
+                "RoleName" : "lambda-role-for-rds-setup"
+            }
+        },
+        "DBsetuplambda": {
+            "Type": "AWS::Lambda::Function",
+            "DependsOn": ["RDSDBInstance","LambdaRole"],
+            "Properties": {
+              "Runtime": "python3.10",
+              "Role": {"Fn::GetAtt" : ["LambdaRole", "Arn"] },
+              "Handler": "lambda_function.lambda_handler",
+              "Timeout" : 300,
+              "Environment": {
+                "Variables" : {
+                    "RDSENDPOINT": {"Fn::GetAtt" : ["RDSDBInstance", "Endpoint.Address"] },
+                    "DBROOTUSER": {"Ref" : "MasterUsername"},
+                    "DBROOTPASSWD": {"Ref" : "MasterUserPassword"},
+                    "DBNAME": {"Ref" : "DBname"},
+                    "DBAPPUSER": {"Ref" : "DBAppUsername"},
+                    "APPUSERPASSWD": {"Ref" : "DBAppUserPassword"}                   
+                }
+              }     
+              , "Code": {
+                "S3Bucket": "car-india-db-setup",
+                "S3Key": "my-deployment-package.zip"
+              },
+              "VpcConfig" : {
+                "SecurityGroupIds" : [{ "Ref": "SGdbrds" }],
+                "SubnetIds" : {"Ref" : "DBsubnetlist"}
+              },
+              "Description": "Setup DB to use for app after RDS creation",
+              "TracingConfig": {
+                "Mode": "Active"
+              }
+            }
+        }
+    }
+}
+

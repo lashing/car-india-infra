@@ -224,6 +224,7 @@
                         "sudo yum install -y ruby",
                         "sudo yum install -y wget",
                         "yum update -y aws-cfn-bootstrap",
+                        "touch ~/.bash_profile",
                         "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash",
                         "source /.nvm/nvm.sh",
                         "nvm install 16.0.0",
